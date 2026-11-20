@@ -15,6 +15,7 @@ from . import care_service
 from .screen_model import reference_model
 from .resource_routes import router as resources
 from .season_routes import router as seasons
+from .feed_effect_routes import router as feed_effects
 queue=redis.Redis.from_url(os.getenv('REDIS_URL','redis://redis:6379/0'),decode_responses=True)
 @asynccontextmanager
 async def lifespan(app):
@@ -36,7 +37,7 @@ async def recover(request:Request,call_next):
     except IntegrityError:return JSONResponse({'detail':'蜂箱/巡检编号或关联冲突，请刷新后重试'},409)
     except Exception:
         logging.exception('request error');return JSONResponse({'detail':'蜂场记录暂时无法保存，请重试'},500)
-app.include_router(resources);app.include_router(seasons)
+app.include_router(resources);app.include_router(seasons);app.include_router(feed_effects)
 @app.get('/health')
 def health(db=Depends(session)):db.execute(text('SELECT 1'));queue.ping();return {'status':'ok'}
 @app.post('/auth/login')

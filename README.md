@@ -100,3 +100,18 @@ Seed增加FD-202611-A可用30kg、FD-HOLD隔离8kg、FD-EXPIRED已过期5kg，�
 GET /moves /insulation-lots /insulation-installs /spring-reviews供三角色；POST /moves、complete/cancel、POST /insulation-lots、POST /insulation-installs、PUT ventilation、POST remove及POST /spring-reviews允许蜂师/主管；move approve、insulation accept、spring pass及物料隔离仅主管，viewer全部只读。各新增模型均有外键；物料数量与春检值域由数据库和Pydantic校验。
 
 Seed只在缺失时增加IN-2026-WINTER 120件，不改人工库存/安装/春检；历史winter_ready无需补装以维持历史状态，新的春检动作才要求保温。真实证据在test-artifacts/gb-1027/v3/。本地检疫留痕不替代行政检疫证；每箱每季一条春检，本演示固定2026越冬季，无跨季归档。
+
+
+## V4 饲喂后分值回升的对照配对
+
+饲喂后分值回升也可能只是天暖了。V4 在“弱群筛查”页下方按结案日期发起对照配对，用同一参考重算分差，再与同场对照箱比较，把气候等共同变化从饲喂单里扣掉。
+
+**选单与重算**：只取 `kind=feed`、`status=closed` 且 `closed_at` 的上海日历日期落在所选区间的饲喂单；结案后首份巡检取该箱 `recorded_at` 严格晚于闭案的最早一条。两份巡检都用 `backend/fixtures/winter_reference.json` 的同一个 IsolationForest 重新算 `score_samples`，`delta = 结案后分值 − 建单分值`，不读巡检里已存的分值；参考 SHA 与阈值记在批次上。缺建单或结案后读数记 `missing`，缺测与没配上的在页面分开列出。
+
+**对照箱资格**：与饲喂箱同场（当前 `site` 相同）；在建单日与结案后巡检日都有读数（取当天最接近对应巡检时刻的一条）；区间内没有非取消的 `ApiaryMove`，没有非取消且与区间重叠的 `CareAction`；不是本批另一张饲喂单的蜂箱。每张饲喂单的候选对照按“建单分值差”从小到大排序。
+
+**配对口径**：同场对照箱每批只用一回。先让配成的单尽量多，再让配对前（建单巡检）分值尽量接近；用最小费用流求解（配成边带固定奖励，其余费用为量化后的建单分值差加确定性并列项），测试中以全排列暴力解校验最优性。两箱分差之差 = 饲喂箱 delta − 对照箱 delta（对照箱同样用前后两次读数重算），正值表示饲喂箱相对对照箱回升更多，仅作核查线索，不声称因果、疗效或患病概率。
+
+**并发、中断与发布**：计算与补巡检/补处置可并发。批次整段计算在一笔持有行锁的事务内完成，中断时回滚为 `queued`，worker 每轮先取队列再续跑排队/超时未完成的原批；已发布批次不再重算、不会重复发布。发布由主管操作：与当前材料指纹比对，若有变则在发布前重配并累计 `revisions`，发布后把当时配对与分差快照写入 `snapshot`，详情接口只读快照，后续补录不改写当时依据；发布前后材料持续变化则拒发并提示稍后重试。
+
+接口：`GET/POST /feed-effect-batches`、`GET /feed-effect-batches/{id}`、`POST /feed-effect-batches/{id}/retry`（续跑原批）、`POST /feed-effect-batches/{id}/publish`（仅主管）。蜂师可发起与续跑，观察员只读。前端组件为`components/feed_effect.js`，挂在`pages/screening.js`；后端新增`feed_effect_models.py/feed_effect_service.py/feed_effect_routes.py`，`worker.py`接`apiary:feed-effect`队列与续跑。新表由metadata补建，无旧表列变更。离线测试在`backend/tests/`（SQLite内存库，含HTTP层），不依赖 PostgreSQL/Redis。

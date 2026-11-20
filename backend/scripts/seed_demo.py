@@ -7,6 +7,7 @@ from src.models import User,Hive,Visit
 from src.auth import hash_password
 from src.resource_models import FeedLot,FeedIssue,QueenObservation
 from src.season_models import InsulationLot
+from src import feed_effect_models  # noqa: F401  让独立执行seed时也建对照配对表
 
 def seed():
     Base.metadata.create_all(engine)
